@@ -36,9 +36,9 @@
 void InitNvm(void);
 unsigned char ReadStatusReg();
 unsigned char WriteSpi(unsigned char  i);
-unsigned int ReadSpi(char addressMsb, char addressLsb);
-void WriteNvm(unsigned char addressMsb, unsigned char addressLsb, unsigned char dataMsb, unsigned char dataLsb);
-void WritteEnable(void);
+unsigned int ReadSpi(unsigned int address);
+void WriteNvm(unsigned int address, unsigned char dataMsb, unsigned char dataLsb);
+void WriteEnable(void);
 
 #ifdef	__cplusplus
 extern "C" {
