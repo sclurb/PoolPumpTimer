@@ -40,7 +40,7 @@
         <targetPluginBoard></targetPluginBoard>
         <platformTool>ICD3PlatformTool</platformTool>
         <languageToolchain>XC8</languageToolchain>
-        <languageToolchainVersion>2.40</languageToolchainVersion>
+        <languageToolchainVersion>2.41</languageToolchainVersion>
         <platform>3</platform>
       </toolsSet>
       <packs>
@@ -153,10 +153,6 @@
         <property key="program-the-device-with-default-config-words" value="true"/>
         <property key="remove-unused-sections" value="true"/>
       </HI-TECH-LINK>
-      <ICD3PlatformTool>
-        <property key="debugoptions.useswbreakpoints" value="true"/>
-        <property key="firmware.download.all" value="false"/>
-      </ICD3PlatformTool>
       <Tool>
         <property key="debugoptions.useswbreakpoints" value="true"/>
         <property key="firmware.download.all" value="false"/>

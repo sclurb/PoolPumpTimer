@@ -25,6 +25,18 @@ typedef enum controlState
          END_TIME
 }controlState_t;
 
+typedef enum rxDataState
+{
+        NOT_VALID,
+        VALID_1,
+        VALID_2,
+        VALID_3,
+        VALID_4,
+        VALID_5,
+        VALID_6,
+        COMPLETE
+}rxDataState;
+
 
 // TODO Insert C++ class definitions if appropriate
 

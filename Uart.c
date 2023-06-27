@@ -19,7 +19,7 @@ void InitUart(void)
     RCSTAbits.SREN = 0;
     RCSTAbits.CREN = 1;
     RCSTAbits.ADDEN = 0;
-    SPBRG = 25;
+    SPBRG = 12;
     SPBRGH = 0;
     TXSTAbits.SYNC = 0;
     TXSTAbits.BRGH = 0;
