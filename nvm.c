@@ -52,10 +52,12 @@ unsigned char WriteSpi(unsigned char  i)
     return SSPBUF;
 }
 
-unsigned int ReadSpi(char addressMsb, char addressLsb)
+unsigned int ReadSpi(unsigned int address)
 {
-    char lsb, msb;
+    unsigned char lsb, msb, addressMsb, addressLsb;
     unsigned int i = 0x0000;
+    addressLsb = (unsigned char)address & 0x00ff;
+    addressMsb = (unsigned char)address >> 8;
     while(ReadStatusReg() & 0x03);
     chip_select = 0;
     WriteSpi(READ);
@@ -65,7 +67,7 @@ unsigned int ReadSpi(char addressMsb, char addressLsb)
     lsb = WriteSpi(0x00);
     chip_select = 1;
    i = (unsigned int)msb;
-   i = i <<8;
+   i = i << 8;
    i = i | (unsigned int)lsb;
    
    return i;
@@ -78,13 +80,15 @@ void WriteEnable(void)
     chip_select = 1;
 }
 
-void WriteNvm(unsigned char addressMsb, unsigned char addressLsb, unsigned char dataMsb, unsigned char dataLsb)
+void WriteNvm(unsigned int address, unsigned char dataMsb, unsigned char dataLsb)
 {
-    unsigned char x;
+    unsigned char addressMsb, addressLsb;
+    addressLsb = (unsigned char)address & 0x00ff;
+    addressMsb = (unsigned char)address >> 8;
     while(ReadStatusReg() & 0x03);
     WriteEnable();
     chip_select = 0;
-    x = WriteSpi(WRITE);
+    WriteSpi(WRITE);
     WriteSpi(addressMsb);
     WriteSpi(addressLsb);
     WriteSpi(dataMsb);
