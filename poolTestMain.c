@@ -110,9 +110,12 @@ uint8_t rx_flag = 0;
 char data = 0x00;
 char data1[20];
 uint8_t count = 0;
+uint8_t rxIndex = 0;
+unsigned char counter = 0x31;
 
 
 controlState_t controlState = RUN;
+rxDataState rxState = NOT_VALID;
 
 
 int main(void) { 
@@ -178,20 +181,51 @@ int main(void) {
 
     while(1){
         
-        if(rx_flag)
+        if(rxState == COMPLETE)
         {
-            //LCDPutChar(data);
-            data1[count] = data;
-            count++;
-            rx_flag = 0;
-            if(count == 14)
-            {
-                count = 0;
-                LCDLine2();
-                LCDPutChar('1'); 
-                LCDPutChar(' '); 
-                LCDPutStr(data1); 
+
+            if(counter >= 0x3a){
+                counter = 0x31;
             }
+            LCDLine1();
+            lcdLine1[0] = 'R';
+            lcdLine1[1] = 'u';
+            lcdLine1[2] = 'n';
+            lcdLine1[3] = 'n';
+            lcdLine1[4] = 'i';
+            lcdLine1[5] = 'g';
+            lcdLine1[6] = ' ';
+            lcdLine1[7] = ' ';
+            lcdLine1[8] = rx_string[1];
+            lcdLine1[9] = rx_string[2];
+            lcdLine1[10] =':';
+            lcdLine1[11] = rx_string[3];
+            lcdLine1[12] = rx_string[4];
+            lcdLine1[13] = ':';
+            lcdLine1[14] = rx_string[5];
+            lcdLine1[15] = rx_string[6];
+            LCDPutStr(lcdLine1);
+            counter++;
+
+            LCDLine2();
+            lcdLine2[0] = ' ';
+            lcdLine2[1] = ' ';
+            lcdLine2[2] = ' ';
+            lcdLine2[3] = ' ';
+            lcdLine2[4] = ' ';
+            lcdLine2[5] = ' ';
+            lcdLine2[6] = ' ';
+            lcdLine2[7] = ' ';
+            lcdLine2[8] = rx_string[49];
+            lcdLine2[9] = rx_string[50];
+            lcdLine2[10] = '/';
+            lcdLine2[11] = rx_string[47];
+            lcdLine2[12] = rx_string[48];
+            lcdLine2[13] = '/';
+            lcdLine2[14] = rx_string[51];
+            lcdLine2[15] = rx_string[52];
+            LCDPutStr(lcdLine2);
+            rxState = NOT_VALID;
         }
         
         if(MenuButton)
@@ -294,8 +328,8 @@ int main(void) {
             {
                 if(!lcdIsWritten)
                 {
-                   WriteNvm(0x12, 0x37, 'A', 'G');
-                    unsigned int result = ReadSpi(0x12, 0x37);
+                   WriteNvm(0x1237, 'P', 'M');
+                    unsigned int result = ReadSpi(0x1237);
                     unsigned char lsb = result & 0x00ff;
                     result =  result >> 8;
                     unsigned char msb = result & 0x00ff;
@@ -342,8 +376,8 @@ int main(void) {
             {
                 if(!lcdIsWritten)
                 {
-                    WriteNvm(0x12, 0x34, 'R', 'D');
-                    unsigned int result = ReadSpi(0x12, 0x34);
+                    WriteNvm(0x1234, 'R', 'D');
+                    unsigned int result = ReadSpi(0x1234);
                     unsigned int temp = result;
                     temp = temp >> 8;
                     unsigned char lsb = result & 0x00ff;
@@ -387,11 +421,7 @@ int main(void) {
                     lcdIsWritten = 1;  
                 }
             }
-            __delay_ms(50); 
         }
-        
-        
-
     }    
     return (EXIT_SUCCESS);
 }
@@ -461,7 +491,47 @@ void __interrupt(high_priority) tcInt(void)
             RCSTAbits.CREN = 1;
         }
         data = RCREG;
-        rx_flag = 1;
+        if(data == '$' && rxState == NOT_VALID)
+        {
+            rxState = VALID_1;
+            rxIndex = 0;
+        }
+        else if(data == 'G' && rxState == VALID_1)
+        {
+            rxState = VALID_2;
+        }
+        else if(data == 'P' && rxState == VALID_2)
+        {
+            rxState = VALID_3;
+        }
+        else if(data == 'R' && rxState == VALID_3)
+        {
+            rxState = VALID_4;
+        }
+        else if(data == 'M' && rxState == VALID_4)
+        {
+            rxState = VALID_5;
+        }
+        else if(data == 'C' && rxState == VALID_5)
+        {
+            rxState = VALID_6;
+        }
+        else if(rxState == VALID_6 && data != '\r')
+        {
+            rx_string[rxIndex] = data;
+            rxIndex++;
+        }        
+        else if(data == '\r' && rxState == VALID_6)
+        {
+            rx_string[rxIndex] = '\0';
+            rxState = COMPLETE;
+        }
+        else
+        {
+
+        }
+
+
         PIR1bits.RCIF = 0;
         PIE1bits.RCIE = 1;
     }
