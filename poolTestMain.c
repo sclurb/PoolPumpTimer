@@ -119,7 +119,6 @@ unsigned int end_time = 0x0000;
 int time_offset = 0;
 unsigned int current_time = 0x0000;
 
-
 controlState_t controlState = RUN;
 rxDataState rxState = NOT_VALID;
 
@@ -176,7 +175,7 @@ int main(void) {
     LCD_Initialize();
     start_time = ReadSpi(StartTimeAddress);
     end_time = ReadSpi(EndTimeAddress);
-    time_offset = ReadSpi(TimeOffsettAddress);
+    time_offset = (int)ReadSpi(TimeOffsettAddress);
     time_offset = -4;
     
     LCDPutStr(" Hello World!");         //Display String "Hello World"
@@ -194,21 +193,21 @@ int main(void) {
 
         if(MenuButton)
         {
-            controlState = TOP_MENU;
+            controlState = START_TIME;
             lcdIsWritten = 0;
             MenuButton = 0;
         }
         if(NextButton)
         {
-            if(controlState == TOP_MENU)
+            if(controlState == START_TIME)
             {
-            controlState = START_TIME;                
+            controlState = END_TIME;                
             }
-            else if (controlState == START_TIME)
+            else if (controlState == END_TIME)
             {
-                controlState = END_TIME;
+                controlState = OFFSET_TIME;
             }
-            else if(controlState == END_TIME)
+            else if(controlState == OFFSET_TIME)
             {
                 controlState = RUN;
             }
@@ -276,41 +275,6 @@ int main(void) {
 
                 break;
             };
-            case TOP_MENU:
-            {
-                if(!lcdIsWritten)
-                {
-                    DisplayClr();
-                    lcdLine1[0] = 'T';
-                    lcdLine1[1] = 'h';
-                    lcdLine1[2] = 'i';
-                    lcdLine1[3] = 's';
-                    lcdLine1[4] = ' ';
-                    lcdLine1[5] = 'i';
-                    lcdLine1[6] = 's';
-                    LCDPutStr(lcdLine1); 
-                    LCDLine2();
-                    lcdLine2[0] = 'T';
-                    lcdLine2[1] = '0';
-                    lcdLine2[2] = 'p';
-                    lcdLine2[3] = ' ';
-                    lcdLine2[4] = 'M';
-                    lcdLine2[5] = 'e';
-                    lcdLine2[6] = 'n';
-                    lcdLine2[7] = 'u';
-                    lcdLine2[8] = ' ';
-                    lcdLine2[9] = ' ';
-                    lcdLine2[10] = ' ';
-                    lcdLine2[11] = ' ';
-                    lcdLine2[12] = ' ';
-                    lcdLine2[13] = ' ';
-                    lcdLine2[14] = ' ';
-                    lcdLine2[15] = ' ';
-                    LCDPutStr(lcdLine2);  
-                    lcdIsWritten = 1;
-                }
-                break;
-            }
             case START_TIME:
             {
                 if(!lcdIsWritten)
@@ -358,6 +322,7 @@ int main(void) {
                     lcdIsWritten = 1;
                     WriteNvm(StartTimeAddress, 'P', 'M');
                 }
+                break;
             }
             case END_TIME:
             {
@@ -408,6 +373,40 @@ int main(void) {
                     WriteNvm(EndTimeAddress, 'R', 'D');
                 }
             }
+            case OFFSET_TIME:
+            {
+                if(!lcdIsWritten)
+                {
+                    DisplayClr();
+                    lcdLine1[0] = 'T';
+                    lcdLine1[1] = 'h';
+                    lcdLine1[2] = 'i';
+                    lcdLine1[3] = 's';
+                    lcdLine1[4] = ' ';
+                    lcdLine1[5] = 'i';
+                    lcdLine1[6] = 's';
+                    LCDPutStr(lcdLine1); 
+                    LCDLine2();
+                    lcdLine2[0] = 'T';
+                    lcdLine2[1] = '0';
+                    lcdLine2[2] = 'p';
+                    lcdLine2[3] = ' ';
+                    lcdLine2[4] = 'M';
+                    lcdLine2[5] = 'e';
+                    lcdLine2[6] = 'n';
+                    lcdLine2[7] = 'u';
+                    lcdLine2[8] = ' ';
+                    lcdLine2[9] = ' ';
+                    lcdLine2[10] = ' ';
+                    lcdLine2[11] = ' ';
+                    lcdLine2[12] = ' ';
+                    lcdLine2[13] = ' ';
+                    lcdLine2[14] = ' ';
+                    lcdLine2[15] = ' ';
+                    LCDPutStr(lcdLine2);  
+                    lcdIsWritten = 1;
+                }
+            }
         }
     }    
     return (EXIT_SUCCESS);
@@ -422,15 +421,9 @@ void InitT1(void)
 
 unsigned int convertTimeToNumber(unsigned char hour_msb, unsigned char hour_lsb, unsigned char min_msb, unsigned char min_lsb)
 {
-    unsigned int time = 0x0000;
-    unsigned char hour, min;
-    hour = (unsigned char)((hour_msb & 0x0f) << 4);
-    hour = (hour_lsb & 0x0f) | hour;
-    min = (unsigned char)((min_msb & 0x0f) << 0x04);
-    min = (min_lsb & 0x0f) | min;
-    time = (time | hour) << 8;
-    time = time | min;
-    return time;
+    unsigned char hour = (unsigned char)((hour_msb & 0x0f) << 4) | (hour_lsb & 0x0f);
+    unsigned char min = (unsigned char)((min_msb & 0x0f) << 4) | (min_lsb & 0x0f);
+    return (unsigned int)((hour << 8) | min);
 }
 
 time convertNumberToTime(unsigned int time_num)
@@ -445,34 +438,14 @@ time convertNumberToTime(unsigned int time_num)
 
 unsigned int applyOffset(unsigned int time)
 {
-    unsigned int result =  time;
-    unsigned int offset =(unsigned int)time_offset;
-    result = (result & 0xff00) >> 8;
-    if((result + time_offset) > 23)
-    {
-        result = ((result + offset) - 23) & 0x00ff;
-    }
-    else if((result + time_offset) < 0 )
-    {
-        result = (result + offset) + 23;
-    }
-    else
-    {
-        if(time_offset < 0)
-        {
-            result = result - offset;
-        }
-        else
-        {
-            result = result - offset;
-        }
-        
-    }
-    result = (result << 8) | time;
-    return result;
+    int hour;
+    hour = (int)((((time & 0xf000) >> 12) * 10) + ((time & 0x0f00) >> 8)) + time_offset;
+    if(hour > 23)
+        hour = hour - 24;
+    else if(hour < 1)
+        hour = hour + 24;
+    return (unsigned int)((((unsigned char)((hour/10) << 4) | (hour % 10)) & 0x00ff) << 8) | (time & 0x00ff); 
 }
-
-
 
 void __interrupt(high_priority) tcInt(void)
 {
@@ -569,8 +542,6 @@ void __interrupt(high_priority) tcInt(void)
         {
 
         }
-
-
         PIR1bits.RCIF = 0;
         PIE1bits.RCIE = 1;
     }

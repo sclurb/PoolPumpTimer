@@ -19,9 +19,9 @@ typedef enum controlState
 {
            
          RUN,
-         TOP_MENU,
          START_TIME,
-         END_TIME
+         END_TIME,
+         OFFSET_TIME
 }controlState_t;
 
 typedef enum rxDataState
