@@ -14,7 +14,6 @@
 
 #include <xc.h> // include processor files - each processor file is guarded.  
 
-// TODO Insert appropriate #include <>
 
 typedef enum controlState
 {
@@ -37,11 +36,22 @@ typedef enum rxDataState
         COMPLETE
 }rxDataState;
 
+typedef struct time
+{
+    unsigned char hour_msb;
+    unsigned char hour_lsb;
+    unsigned char min_msb;
+    unsigned char min_lsb;
+}time;
+
 
 // TODO Insert C++ class definitions if appropriate
 
 void InitT1(void);
 void initUart(void);
+unsigned int convertTimeToNumber(unsigned char hour_msb, unsigned char hour_lsb, unsigned char min_msb, unsigned char min_lsb);
+time convertNumberToTime(unsigned int time_num);
+unsigned int applyOffset(unsigned int time);
 
 
 #ifdef	__cplusplus
