@@ -193,10 +193,18 @@ int main(void) {
 
         if(MenuButton)
         {
-            controlState = START_TIME;
+            if(controlState == RUN)
+            {
+                controlState = START_TIME;
+            }
+            else if(controlState == START_TIME)
+            {
+                controlState = RUN;
+            }
             lcdIsWritten = 0;
             MenuButton = 0;
         }
+
         if(NextButton)
         {
             if(controlState == START_TIME)
