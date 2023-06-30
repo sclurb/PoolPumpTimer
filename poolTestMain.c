@@ -198,7 +198,7 @@ int main(void) {
         time_offset = (int)ReadSpi(TimeOffsettAddress);
     }
     twelve_hour = 1;
-    current_adjusted_time.am_pn = 0;
+    current_adjusted_time.am_pm = 0;
     current_adjusted_time.time = 0;
     
     LCDPutStr(" Hello World!");                 //Display String "Hello World"
@@ -267,7 +267,7 @@ int main(void) {
                     {
                         makeTimeTwelveHour(&current_adjusted_time);
                     }
-                    time_t time = convertNumberToTime(current_adjusted_time);
+                    time_t time = convertNumberToTime(&current_adjusted_time);
                     LCDLine1();
                     lcdLine1[0] = 'R';
                     lcdLine1[1] = 'u';
@@ -315,7 +315,7 @@ int main(void) {
                 {
                     timeNumber_t startTime;
                     startTime.time = ReadSpi(StartTimeAddress);
-                    time_t displayed_start_time = convertNumberToTime(startTime);                    
+                    time_t displayed_start_time = convertNumberToTime(&startTime);                    
                     DisplayClr();
                     lcdLine1[0] = 'S';
                     lcdLine1[1] = 't';
@@ -372,7 +372,7 @@ int main(void) {
                 {
                     timeNumber_t endTime;
                     endTime.time = ReadSpi(EndTimeAddress);
-                    time_t displayed_end_time = convertNumberToTime(endTime); 
+                    time_t displayed_end_time = convertNumberToTime(&endTime); 
                     DisplayClr();
                     lcdLine1[0] = 'E';
                     lcdLine1[1] = 'n';
@@ -475,25 +475,24 @@ unsigned int convertTimeToNumber(unsigned char hour_msb, unsigned char hour_lsb,
 }
 
 
-time_t convertNumberToTime(timeNumber_t time_num)
+time_t convertNumberToTime(timeNumber_t *time_num)
 {
-    unsigned char adjusted_hour = (unsigned char)(((time_num.time & 0xf000) >> 12) * 10) + (unsigned char)((time_num.time & 0x0f00) >> 8);
     time_t time;
-    time.min_lsb = (unsigned char)(time_num.time & 0x000f) | 0x0030;
-    time.min_msb = (unsigned char)((time_num.time & 0x00f0) >> 4) | 0x0030;
-    time.hour_lsb = (unsigned char)((time_num.time & 0x0f00) >> 8) | 0x0030;
-    time.hour_msb = (unsigned char)((time_num.time & 0xf000) >> 12) | 0x0030;
+    time.min_lsb = (unsigned char)(time_num->time & 0x000f) | 0x0030;
+    time.min_msb = (unsigned char)((time_num->time & 0x00f0) >> 4) | 0x0030;
+    time.hour_lsb = (unsigned char)((time_num->time & 0x0f00) >> 8) | 0x0030;
+    time.hour_msb = (unsigned char)((time_num->time & 0xf000) >> 12) | 0x0030;
         time.mmm = 'm';
-    if(twelve_hour && adjusted_hour > 11 )
+    if(twelve_hour && time_num->am_pm == 1 )
         time.a_or_p = 'p';
-    else if(twelve_hour && adjusted_hour < 12)
+    else if(twelve_hour && time_num->am_pm == 0)
         time.a_or_p = 'a';
     else
     {
         time.a_or_p = ' ';
         time.mmm = ' ';
     }
-    if(time.hour_msb == 0x30)
+    if(time.hour_msb == 0x30 && time.hour_lsb != 0x30)
     {
         time.hour_msb = ' ';
     }
@@ -509,9 +508,9 @@ timeNumber_t applyOffset(unsigned int time_num)
     else if(hour < 1)
         hour = hour + 24;
     if(hour > 12)
-        time.am_pn = 1;
+        time.am_pm = 1;
     else
-        time.am_pn = 0;
+        time.am_pm = 0;
 
     time.time = (unsigned int)((((unsigned char)((hour/10) << 4) | (hour % 10)) & 0x00ff) << 8) | (time_num & 0x00ff); 
     return time;
@@ -520,17 +519,12 @@ timeNumber_t applyOffset(unsigned int time_num)
 void makeTimeTwelveHour(timeNumber_t *time_num)
 {
     int hour = (int)((((time_num->time & 0xf000) >> 12) * 10) + ((time_num->time & 0x0f00) >> 8));
-    if(hour > 11 && hour != 12)
-    {
-        time_num->am_pn = 1;
+    if(hour > 11)
         hour = hour - 12;
-    }
-    else if(hour == 12)
-    {
-        time_num->am_pn = 1;
-    }
+    if(hour < 12)
+        time_num->am_pm = 0;
     else
-        time_num->am_pn = 0;
+        time_num->am_pm = 1;
     time_num->time = (unsigned int)((((unsigned char)((hour/10) << 4) | (hour % 10)) & 0x00ff) << 8) | (time_num->time & 0x00ff);
 }
 
