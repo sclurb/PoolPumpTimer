@@ -45,7 +45,7 @@ typedef struct time_t
 typedef struct timeNumber_t
 {
     unsigned int time;
-    unsigned char am_pn;
+    unsigned char am_pm;
 }timeNumber_t;
 
 
@@ -53,7 +53,7 @@ typedef struct timeNumber_t
 void InitT1(void);
 void initUart(void);
 unsigned int convertTimeToNumber(unsigned char hour_msb, unsigned char hour_lsb, unsigned char min_msb, unsigned char min_lsb);
-time_t convertNumberToTime(timeNumber_t time_num);
+time_t convertNumberToTime(timeNumber_t *time_num);
 timeNumber_t applyOffset(unsigned int time_num);
 void makeTimeTwelveHour(timeNumber_t *time_num);
 
