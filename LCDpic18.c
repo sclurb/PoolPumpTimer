@@ -32,12 +32,6 @@
 #define cursor_on() LCDPutCmd(LCD_CURSOR_ON) // legacy support
 #define DisplayClr() LCDPutCmd(LCD_CLEAR) // Legacy support
 
-
-//----------------------------------------------------------------------
-// Definitions specific to the PICDEM 2 Plus
-// These apply to the Black (2011) version.
-//----------------------------------------------------------------------
-
 // single bit for selecting command register or data register
 #define instr 0
 #define data 1
@@ -52,10 +46,6 @@
 #define NB_LINES 2 // Number of display lines
 #define NB_COL 16 // Number of characters per line
 
-
-
-
-
 void LCD_Initialize()
 {
     LCD_PORT = 0;               // clear latches before enabling TRIS bits
@@ -69,10 +59,8 @@ void LCD_Initialize()
     LCDPutCmd(ENTRY_MODE);      // set cursor movement direction
 }
 
-
 void LCDWriteNibble(char ch, char rs)
 {
-
     ch = (ch >> 4);             // always send the upper nibble
     ch = (ch & 0x0F);           // mask off the nibble to be transmitted
     LCD_PORT = (LCD_PORT & 0xF0);  // clear the lower half of LCD_PORT
@@ -101,7 +89,6 @@ void LCDPutCmd(char ch)
     LCDWriteNibble(ch,instr);  //Now send the lower nibble
 }
 
-
 void LCDPutStr(const char *str)
 {
     char i=0;
@@ -113,7 +100,6 @@ void LCDPutStr(const char *str)
 
 void LCDGoto(char pos,char ln)
 {
-
     if ((ln > (NB_LINES-1)) || (pos > (NB_COL-1)))  // if incorrect line or column
     {
         return;                 // Just do nothing
