@@ -128,6 +128,8 @@ int temp_hour = 0;
 int temp_min = 0;
 timeNumber_t displayed_start_time;
 timeNumber_t displayed_end_time;
+char man_auto[4];
+unsigned char mode;
 
 
 controlState_t controlState = RUN;
@@ -136,7 +138,7 @@ rxDataState rxState = NOT_VALID;
 
 int main(void) { 
     
-    OSCCON=0x72; // Select internal oscillator with frequency = 8MHz
+    OSCCON = 0x72; // Select internal oscillator with frequency = 8MHz
     ADCON1 = 0x0e;
     TRISAbits.RA0 = 1;
     TRISAbits.RA1 = 1;
@@ -186,6 +188,8 @@ int main(void) {
     InitUart();
     InitNvm();
     LCD_Initialize();
+    // WriteNvm(StartTimeAddress, 0x0c, 0x1e);
+    // WriteNvm(EndTimeAddress, 0x16, 0x1e);
     start_time = ReadSpi(StartTimeAddress);
     temp_start_time = ReadSpi(StartTimeAddress);
     end_time = ReadSpi(EndTimeAddress);
@@ -193,26 +197,23 @@ int main(void) {
     twelve_hour = 1;
     current_adjusted_time.am_pm = 0;
     current_adjusted_time.time = 0;
+    Relay1 = 0;
+    mode = 1;
     
-    LCDPutStr(" Hello World!");                 //Display String "Hello World"
+    LCDPutStr("Pool Pump Timer"); 
+    LCDLine2(); 
+    LCDPutStr("Using GPS antenna"); 
     __delay_ms(500);
-    LCDGoto(8,1);                               //Go to column 8 of second line
-    LCDPutChar('1');                            //Display character '1'
-    DisplayClr();                               // Clear the display
-
-    LCDPutStr("Bobby has Done");                // Display a string "LCD Display"
-    LCDGoto(0,1);                               //Go to second line 
-    LCDPutStr("It Again!!");  
-    
-    
 
     while(1){
-        if(IncButton)
+        if(IncButton && controlState != RUN)
         {
             temp_min = temp_min + 10;
             if(temp_min >= 60)
             {
                 temp_hour++;
+                if(temp_hour > 24)
+                    temp_hour = 24;
                 temp_min = 0;
             }
             if(controlState == START_TIME)
@@ -226,12 +227,14 @@ int main(void) {
             lcdIsWritten = 0;
             IncButton = 0;
         }
-        if(DecButton)
+        else if(DecButton && controlState != RUN)
         {
             temp_min = temp_min - 10;
             if(temp_min <= 0)
             {
                 temp_hour--;
+                if(temp_hour < 0)
+                    temp_hour = 0;
                 temp_min = 50;
             }
             if(controlState == START_TIME)
@@ -244,6 +247,11 @@ int main(void) {
             }
             lcdIsWritten = 0;
            DecButton = 0;
+        }
+        else if(DecButton && controlState == RUN)
+        {
+            mode = !mode;
+             DecButton = 0;
         }
         switch(controlState)
         {
@@ -259,9 +267,9 @@ int main(void) {
                     current_time = displayed_current_time.time;
 
                     LCDLine1();
-                    lcdLine1[0] = 'R';
-                    lcdLine1[1] = 'u';
-                    lcdLine1[2] = 'n';
+                    lcdLine1[0] = man_auto[0];
+                    lcdLine1[1] = man_auto[1];
+                    lcdLine1[2] = man_auto[2];
                     lcdLine1[3] = ' ';
                     lcdLine1[4] = ' ';
                     lcdLine1[5] = ' ';
@@ -298,6 +306,8 @@ int main(void) {
                     lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);
                     rxState = NOT_VALID;
+                    if(count <= 20)
+                        count++;
                 }
                 break;
             };
@@ -326,6 +336,7 @@ int main(void) {
                     lcdLine1[13] = ' ';
                     lcdLine1[14] = ' ';
                     lcdLine1[15] = ' ';
+                    lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
                     lcdLine2[0] = displayed_start_time.hour_msb;
@@ -344,6 +355,7 @@ int main(void) {
                     lcdLine2[13] = ' ';
                     lcdLine2[14] = '5';
                     lcdLine2[15] = '9';
+                    lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
                 }
@@ -375,6 +387,7 @@ int main(void) {
                     lcdLine1[13] = ' ';
                     lcdLine1[14] = ' ';
                     lcdLine1[15] = ' ';
+                    lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
                     lcdLine2[0] = displayed_end_time.hour_msb;
@@ -393,6 +406,7 @@ int main(void) {
                     lcdLine2[13] = ' ';
                     lcdLine2[14] = '6';
                     lcdLine2[15] = '0';
+                    lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1; 
                 }
@@ -419,6 +433,7 @@ int main(void) {
                     lcdLine1[13] = ' ';
                     lcdLine1[14] = ' ';
                     lcdLine1[15] = ' ';
+                    lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
                     lcdLine2[0] = '-';
@@ -437,6 +452,7 @@ int main(void) {
                     lcdLine2[13] = ' ';
                     lcdLine2[14] = ' ';
                     lcdLine2[15] = ' ';
+                    lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
                 }
@@ -463,6 +479,7 @@ int main(void) {
                     lcdLine1[13] = '?';
                     lcdLine1[14] = ' ';
                     lcdLine1[15] = ' ';
+                    lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
                     lcdLine2[0] = ' ';
@@ -481,6 +498,7 @@ int main(void) {
                     lcdLine2[13] = ' ';
                     lcdLine2[14] = ' ';
                     lcdLine2[15] = ' ';
+                    lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
                 }
@@ -497,6 +515,31 @@ int main(void) {
             unsigned char a = (unsigned char)((end_time & 0xff00) >> 8);
             unsigned char b = (unsigned char)(end_time & 0x00ff);
             WriteNvm(EndTimeAddress, a, b);
+        }
+        if(!mode)
+        {
+            man_auto[0] = 'm';
+            man_auto[1] = 'a';
+            man_auto[2] = 'n';
+            man_auto[3] = '\0';
+        }
+        else
+        {
+            man_auto[0] = 'R';
+            man_auto[1] = 'u';
+            man_auto[2] = 'n';
+            man_auto[3] = '\0';
+            if(count > 20)
+            {
+                if(start_time < current_time && current_time < end_time)
+                {
+                    Relay1 = 1;
+                }
+                else
+                {
+                    Relay1 = 0;
+                }
+            }
         }
     }    
     return (EXIT_SUCCESS);
@@ -598,7 +641,7 @@ void __interrupt(high_priority) tcInt(void)
             {
                 controlState = START_TIME;
             }
-            else if(controlState == START_TIME)
+            else if(controlState != RUN)
             {
                 controlState = RUN;
             }
@@ -628,18 +671,15 @@ void __interrupt(high_priority) tcInt(void)
         {
             IncButton = 1;
         }
-        if(state4 == 0xf000)
+        else if(state4 == 0xf000)
         {
             DecButton = 1;
-        }        
-        if(state5 == 0xf000){
-            PmpButton = 1;
+        }
+        if(state5 == 0xf000)
+        {
             Relay1 = !Relay1;
         }
-        else
-        {
-            PmpButton = 0;
-        }
+
         LATAbits.LA6 = !LATAbits.LA6;
         TMR1H = 0xff;
         TMR1L = 0xd0;
