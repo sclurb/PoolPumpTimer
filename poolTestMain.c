@@ -13,7 +13,7 @@
 // 'C' source line config statements
 
 // CONFIG1H
-#pragma config OSC = INTIO7    // Oscillator Selection bits (Internal oscillator block, port function on RA6 and RA7)
+#pragma config OSC = INTIO67    // Oscillator Selection bits (Internal oscillator block, port function on RA6 and RA7)
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal/External Oscillator Switchover bit (Oscillator Switchover mode disabled)
 
@@ -107,20 +107,28 @@ unsigned char IncButton = 0x00;
 unsigned char DecButton = 0x00;
 unsigned char PmpButton = 0x00;
 unsigned char lcdIsWritten = 0x00;
-char lcdLine1[16];
-char lcdLine2[16];
+static char lcdLine1[17];
+static char lcdLine2[17];
 char rx_string[100];
 uint8_t rx_flag = 0;
 char data = 0x00;
-char data1[20];
 uint8_t count = 0;
 uint8_t rxIndex = 0;
-unsigned int start_time = 0x0000;
-unsigned int end_time = 0x0000;
-int time_offset = 0;
+int time_offset = -4;
 int twelve_hour = 0;
 unsigned int current_time = 0x0000;
 timeNumber_t current_adjusted_time;
+timeNumber_t start_adjusted_time;
+timeNumber_t end_adjusted_time;
+unsigned int start_time;
+unsigned int temp_start_time;
+unsigned int end_time;
+unsigned int temp_end_time;
+int temp_hour = 0;
+int temp_min = 0;
+timeNumber_t displayed_start_time;
+timeNumber_t displayed_end_time;
+
 
 controlState_t controlState = RUN;
 rxDataState rxState = NOT_VALID;
@@ -166,37 +174,22 @@ int main(void) {
     TRISEbits.RE1 = 0;
     TRISEbits.RE2 = 0;
     
-    INTCON = 0xc0;
-    INTCON2 = 0x00;
-    INTCON3 = 0x00;
-
-
+    INTCON  =   0xc0;
+    INTCON2 =   0x00;
+    INTCON3 =   0x00;
     
+    LATEbits.LE0 = 1;
+    LATEbits.LE1 = 1;
+    LATEbits.LE2 = 1;
+
     InitT1();
     InitUart();
     InitNvm();
     LCD_Initialize();
-    WriteNvm(TimeOffsettAddress, 0xff, 0xfc);
-    WriteNvm(StartTimeAddress, 0x08, 0x30);
-    WriteNvm(EndTimeAddress, 0x12, 0x30);
     start_time = ReadSpi(StartTimeAddress);
-    if(start_time == 0xffff)
-    {
-        WriteNvm(StartTimeAddress, 0x08, 0x30);
-        start_time = ReadSpi(StartTimeAddress);
-    }
+    temp_start_time = ReadSpi(StartTimeAddress);
     end_time = ReadSpi(EndTimeAddress);
-    if(end_time == 0xffff)
-    {
-        WriteNvm(EndTimeAddress, 0x12, 0x30);
-        end_time = ReadSpi(EndTimeAddress);
-    }
-    time_offset = (int)ReadSpi(TimeOffsettAddress);
-    if(time_offset == 0xffff)
-    {
-        WriteNvm(TimeOffsettAddress, 0xff, 0xfc);
-        time_offset = (int)ReadSpi(TimeOffsettAddress);
-    }
+    temp_end_time = ReadSpi(EndTimeAddress);
     twelve_hour = 1;
     current_adjusted_time.am_pm = 0;
     current_adjusted_time.time = 0;
@@ -210,64 +203,61 @@ int main(void) {
     LCDPutStr("Bobby has Done");                // Display a string "LCD Display"
     LCDGoto(0,1);                               //Go to second line 
     LCDPutStr("It Again!!");  
-    Relay2 = 0; 
+    
+    
 
     while(1){
-
-        if(MenuButton)
-        {
-            if(controlState == RUN)
-            {
-                controlState = START_TIME;
-            }
-            else if(controlState == START_TIME)
-            {
-                controlState = RUN;
-            }
-            lcdIsWritten = 0;
-            MenuButton = 0;
-        }
-
-        if(NextButton)
-        {
-            if(controlState == START_TIME)
-            {
-            controlState = END_TIME;                
-            }
-            else if (controlState == END_TIME)
-            {
-                controlState = OFFSET_TIME;
-            }
-            else if(controlState == OFFSET_TIME)
-            {
-                controlState = RUN;
-            }
-            lcdIsWritten = 0;
-            NextButton = 0;
-        }
         if(IncButton)
         {
+            temp_min = temp_min + 10;
+            if(temp_min >= 60)
+            {
+                temp_hour++;
+                temp_min = 0;
+            }
+            if(controlState == START_TIME)
+            {
+                start_time = (unsigned int)((temp_hour << 8) | temp_min);             
+            }
+            else if(controlState == END_TIME)
+            {
+                end_time = (unsigned int)((temp_hour << 8) | temp_min); 
+            }
             lcdIsWritten = 0;
             IncButton = 0;
         }
         if(DecButton)
         {
+            temp_min = temp_min - 10;
+            if(temp_min <= 0)
+            {
+                temp_hour--;
+                temp_min = 50;
+            }
+            if(controlState == START_TIME)
+            {
+                start_time = (unsigned int)((temp_hour << 8) | temp_min);             
+            }
+            else if(controlState == END_TIME)
+            {
+                end_time = (unsigned int)((temp_hour << 8) | temp_min);                 
+            }
             lcdIsWritten = 0;
-            DecButton = 0;
+           DecButton = 0;
         }
         switch(controlState)
         {
             case RUN:
             {
+                PIE1bits.RCIE = 1;
+                timeNumber_t displayed_current_time;
                 if(rxState == COMPLETE)
                 {
-                    current_time = convertTimeToNumber(rx_string[1], rx_string[2], rx_string[3], rx_string[4]);
-                    current_adjusted_time = applyOffset(current_time);
-                    if(twelve_hour)
-                    {
-                        makeTimeTwelveHour(&current_adjusted_time);
-                    }
-                    time_t time = convertNumberToTime(&current_adjusted_time);
+                    char result[16];
+                    getDate(rx_string, result);
+                    displayed_current_time = convertGpsDataToTimeNumber(rx_string[1], rx_string[2], rx_string[3], rx_string[4]);
+                    current_time = displayed_current_time.time;
+
                     LCDLine1();
                     lcdLine1[0] = 'R';
                     lcdLine1[1] = 'u';
@@ -275,18 +265,19 @@ int main(void) {
                     lcdLine1[3] = ' ';
                     lcdLine1[4] = ' ';
                     lcdLine1[5] = ' ';
-                    lcdLine1[6] = time.hour_msb;
-                    lcdLine1[7] = time.hour_lsb;
+                    lcdLine1[6] = displayed_current_time.hour_msb;
+                    lcdLine1[7] = displayed_current_time.hour_lsb;
                     lcdLine1[8] = ':';
-                    lcdLine1[9] = time.min_msb;
-                    lcdLine1[10] = time.min_lsb;
+                    lcdLine1[9] = displayed_current_time.min_msb;
+                    lcdLine1[10] = displayed_current_time.min_lsb;
                     lcdLine1[11] = ':';
                     lcdLine1[12] = rx_string[5];
                     lcdLine1[13] = rx_string[6];
-                    lcdLine1[14] = time.a_or_p;
-                    lcdLine1[15] = time.mmm;
+                    lcdLine1[14] = displayed_current_time.a_or_p;
+                    lcdLine1[15] = displayed_current_time.mmm;
+                    lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1);
-
+                   
                     LCDLine2();
                     lcdLine2[0] = ' ';
                     lcdLine2[1] = ' ';
@@ -294,16 +285,17 @@ int main(void) {
                     lcdLine2[3] = ' ';
                     lcdLine2[4] = ' ';
                     lcdLine2[5] = ' ';
-                    lcdLine2[6] = rx_string[49];
-                    lcdLine2[7] = rx_string[50];
+                    lcdLine2[6] = result[0];
+                    lcdLine2[7] = result[1];
                     lcdLine2[8] = '/';
-                    lcdLine2[9] = rx_string[47];
-                    lcdLine2[10] = rx_string[48];
+                    lcdLine2[9] = result[2];
+                    lcdLine2[10] = result[3];
                     lcdLine2[11] = '/';
-                    lcdLine2[12] = rx_string[51];
-                    lcdLine2[13] = rx_string[52];
+                    lcdLine2[12] = result[4];
+                    lcdLine2[13] = result[5];
                     lcdLine2[14] = ' ';
                     lcdLine2[15] = ' ';
+                    lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);
                     rxState = NOT_VALID;
                 }
@@ -311,11 +303,12 @@ int main(void) {
             };
             case START_TIME:
             {
+                PIE1bits.RCIE = 0;
                 if(!lcdIsWritten)
                 {
-                    timeNumber_t startTime;
-                    startTime.time = ReadSpi(StartTimeAddress);
-                    time_t displayed_start_time = convertNumberToTime(&startTime);                    
+                    displayed_start_time = convertStoredTimeToTimeNumber(start_time);
+                    temp_hour = displayed_start_time.hour;
+                    temp_min = displayed_start_time.mins;
                     DisplayClr();
                     lcdLine1[0] = 'S';
                     lcdLine1[1] = 't';
@@ -340,8 +333,8 @@ int main(void) {
                     lcdLine2[2] = ':';
                     lcdLine2[3] = displayed_start_time.min_msb;
                     lcdLine2[4] = displayed_start_time.min_lsb;
-                    lcdLine2[5] = ' ';
-                    lcdLine2[6] = ' ';
+                    lcdLine2[5] = displayed_start_time.a_or_p;
+                    lcdLine2[6] = displayed_start_time.mmm;
                     lcdLine2[7] = ' ';
                     lcdLine2[8] = ' ';
                     lcdLine2[9] = ' ';
@@ -354,25 +347,17 @@ int main(void) {
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
                 }
-                if(IncButton)
-                {
-                    lcdIsWritten = 0;
-                    IncButton = 0;
-                }
-                if(DecButton)
-                {
-                    lcdIsWritten = 0;
-                    DecButton = 0;
-                }
                 break;
             }
             case END_TIME:
             {
+                PIE1bits.RCIE = 0;
                 if(!lcdIsWritten)
                 {
-                    timeNumber_t endTime;
-                    endTime.time = ReadSpi(EndTimeAddress);
-                    time_t displayed_end_time = convertNumberToTime(&endTime); 
+
+                    displayed_end_time = convertStoredTimeToTimeNumber(end_time);
+                    temp_hour = displayed_end_time.hour;
+                    temp_min = displayed_end_time.mins;
                     DisplayClr();
                     lcdLine1[0] = 'E';
                     lcdLine1[1] = 'n';
@@ -397,8 +382,8 @@ int main(void) {
                     lcdLine2[2] = ':';
                     lcdLine2[3] = displayed_end_time.min_msb;
                     lcdLine2[4] = displayed_end_time.min_lsb;
-                    lcdLine2[5] = ' ';
-                    lcdLine2[6] = ' ';
+                    lcdLine2[5] = displayed_end_time.a_or_p;
+                    lcdLine2[6] = displayed_end_time.mmm;
                     lcdLine2[7] = ' ';
                     lcdLine2[8] = ' ';
                     lcdLine2[9] = ' ';
@@ -416,33 +401,78 @@ int main(void) {
             {
                 if(!lcdIsWritten)
                 {
+                    PIE1bits.RCIE = 0;
                     DisplayClr();
-                    lcdLine1[0] = 'T';
-                    lcdLine1[1] = 'i';
-                    lcdLine1[2] = 'm';
+                    lcdLine1[0] = 'O';
+                    lcdLine1[1] = 'f';
+                    lcdLine1[2] = 'f';
                     lcdLine1[3] = 's';
-                    lcdLine1[4] = ' ';
-                    lcdLine1[5] = 'Z';
-                    lcdLine1[6] = 'o';
-                    lcdLine1[7] = 'n';
-                    lcdLine1[8] = 'e';
-                    lcdLine1[9] = ' ';
-                    lcdLine1[10] = 'O';
-                    lcdLine1[11] = 'f';
-                    lcdLine1[12] = 'f';
-                    lcdLine1[13] = 's';
-                    lcdLine1[14] = 'e';
-                    lcdLine1[15] = 't';
+                    lcdLine1[4] = 'e';
+                    lcdLine1[5] = 't';
+                    lcdLine1[6] = ' ';
+                    lcdLine1[7] = 'T';
+                    lcdLine1[8] = 'i';
+                    lcdLine1[9] = 'm';
+                    lcdLine1[10] = 'e';
+                    lcdLine1[11] = ' ';
+                    lcdLine1[12] = ' ';
+                    lcdLine1[13] = ' ';
+                    lcdLine1[14] = ' ';
+                    lcdLine1[15] = ' ';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
-                    lcdLine2[0] = 'T';
+                    lcdLine2[0] = '-';
                     lcdLine2[1] = '0';
-                    lcdLine2[2] = 'p';
+                    lcdLine2[2] = '4';
                     lcdLine2[3] = ' ';
-                    lcdLine2[4] = 'M';
-                    lcdLine2[5] = 'e';
-                    lcdLine2[6] = 'n';
-                    lcdLine2[7] = 'u';
+                    lcdLine2[4] = 'H';
+                    lcdLine2[5] = 'o';
+                    lcdLine2[6] = 'u';
+                    lcdLine2[7] = 'r';
+                    lcdLine2[8] = 's';
+                    lcdLine2[9] = ' ';
+                    lcdLine2[10] = ' ';
+                    lcdLine2[11] = ' ';
+                    lcdLine2[12] = ' ';
+                    lcdLine2[13] = ' ';
+                    lcdLine2[14] = ' ';
+                    lcdLine2[15] = ' ';
+                    LCDPutStr(lcdLine2);  
+                    lcdIsWritten = 1;
+                }
+            }
+            case TWELVE_TWENTYFOUR:
+            {
+                if(!lcdIsWritten)
+                {
+                    PIE1bits.RCIE = 0;
+                    DisplayClr();
+                    lcdLine1[0] = 'U';
+                    lcdLine1[1] = 's';
+                    lcdLine1[2] = 'i';
+                    lcdLine1[3] = 'n';
+                    lcdLine1[4] = 'g';
+                    lcdLine1[5] = ' ';
+                    lcdLine1[6] = '1';
+                    lcdLine1[7] = '2';
+                    lcdLine1[8] = ' ';
+                    lcdLine1[9] = 'H';
+                    lcdLine1[10] = 'o';
+                    lcdLine1[11] = 'u';
+                    lcdLine1[12] = 'r';
+                    lcdLine1[13] = '?';
+                    lcdLine1[14] = ' ';
+                    lcdLine1[15] = ' ';
+                    LCDPutStr(lcdLine1); 
+                    LCDLine2();
+                    lcdLine2[0] = ' ';
+                    lcdLine2[1] = ' ';
+                    lcdLine2[2] = ' ';
+                    lcdLine2[3] = ' ';
+                    lcdLine2[4] = ' ';
+                    lcdLine2[5] = ' ';
+                    lcdLine2[6] = ' ';
+                    lcdLine2[7] = ' ';
                     lcdLine2[8] = ' ';
                     lcdLine2[9] = ' ';
                     lcdLine2[10] = ' ';
@@ -456,6 +486,18 @@ int main(void) {
                 }
             }
         }
+        if(start_time != temp_start_time)
+        {
+            unsigned char a = (unsigned char)((start_time & 0xff00) >> 8);
+            unsigned char b = (unsigned char)(start_time & 0x00ff);
+            WriteNvm(StartTimeAddress, a, b);
+        }
+        if(end_time != temp_end_time)
+        {
+            unsigned char a = (unsigned char)((end_time & 0xff00) >> 8);
+            unsigned char b = (unsigned char)(end_time & 0x00ff);
+            WriteNvm(EndTimeAddress, a, b);
+        }
     }    
     return (EXIT_SUCCESS);
 }
@@ -467,70 +509,82 @@ void InitT1(void)
     PIR1bits.TMR1IF = 0;
 }
 
-unsigned int convertTimeToNumber(unsigned char hour_msb, unsigned char hour_lsb, unsigned char min_msb, unsigned char min_lsb)
-{
-    unsigned char hour = (unsigned char)((hour_msb & 0x0f) << 4) | (hour_lsb & 0x0f);
-    unsigned char min = (unsigned char)((min_msb & 0x0f) << 4) | (min_lsb & 0x0f);
-    return (unsigned int)((hour << 8) | min);
-}
 
-
-time_t convertNumberToTime(timeNumber_t *time_num)
+timeNumber_t convertGpsDataToTimeNumber(unsigned char hour_msb, unsigned char hour_lsb, unsigned char min_msb, unsigned char min_lsb)
 {
-    time_t time;
-    time.min_lsb = (unsigned char)(time_num->time & 0x000f) | 0x0030;
-    time.min_msb = (unsigned char)((time_num->time & 0x00f0) >> 4) | 0x0030;
-    time.hour_lsb = (unsigned char)((time_num->time & 0x0f00) >> 8) | 0x0030;
-    time.hour_msb = (unsigned char)((time_num->time & 0xf000) >> 12) | 0x0030;
-        time.mmm = 'm';
-    if(twelve_hour && time_num->am_pm == 1 )
-        time.a_or_p = 'p';
-    else if(twelve_hour && time_num->am_pm == 0)
-        time.a_or_p = 'a';
+    timeNumber_t result;
+    result.hour = (int)((hour_msb & 0x0f) * 10) + (hour_lsb & 0x0f);
+    result.mins = (int)((min_msb & 0x0f) * 10) + (min_lsb & 0x0f);
+    result.time = (unsigned int)((result.hour << 8) | result.mins);
+    result.adjustedHour = result.hour + time_offset;
+    if (result.adjustedHour > 11)
+    {
+        result.am_pm = 1;
+        result.a_or_p = 'p';
+    }
     else
     {
-        time.a_or_p = ' ';
-        time.mmm = ' ';
+        result.am_pm = 0;
+        result.a_or_p = 'a';
     }
-    if(time.hour_msb == 0x30 && time.hour_lsb != 0x30)
+    if(result.am_pm)
+        result.adjustedTwelveHour = result.adjustedHour - 12;
+    else
+        result.adjustedTwelveHour = result.adjustedHour;
+    if(twelve_hour)
     {
-        time.hour_msb = ' ';
+        result.hour_msb = (unsigned char)(((result.adjustedTwelveHour / 10) & 0x000f) | 0x30);
+        result.hour_lsb = (unsigned char)(((result.adjustedTwelveHour % 10) & 0x000f) | 0x30);       
     }
-    return time;
+    else
+    {
+        result.hour_msb = (unsigned char)(((result.adjustedHour / 10) & 0x000f) | 0x30);
+        result.hour_lsb = (unsigned char)(((result.adjustedHour % 10) & 0x000f) | 0x30);        
+    }
+    result.min_msb = (unsigned char)(((result.mins / 10) & 0x000f) | 0x30);
+    result.min_lsb = (unsigned char)(((result.mins % 10) & 0x000f) | 0x30);
+    result.mmm = 'm';
+    
+    return result;
 }
 
-timeNumber_t applyOffset(unsigned int time_num)
+timeNumber_t convertStoredTimeToTimeNumber(unsigned int storedTime)
 {
-    timeNumber_t time;
-    int hour = (int)((((time_num & 0xf000) >> 12) * 10) + ((time_num & 0x0f00) >> 8)) + time_offset;
-    if(hour > 23)
-        hour = hour - 24;
-    else if(hour < 1)
-        hour = hour + 24;
-    if(hour > 12)
-        time.am_pm = 1;
-    else
-        time.am_pm = 0;
-
-    time.time = (unsigned int)((((unsigned char)((hour/10) << 4) | (hour % 10)) & 0x00ff) << 8) | (time_num & 0x00ff); 
-    return time;
+    timeNumber_t result;
+    unsigned char hour_msn, hour_lsn, min_msn, min_lsn;
+    hour_msn =  (unsigned char)(((storedTime & 0xff00) >> 8) / 10);
+    hour_lsn =  (unsigned char)(((storedTime & 0xff00) >> 8) % 10);
+    min_msn =   (unsigned char)((storedTime & 0x00ff) / 10);
+    min_lsn =   (unsigned char)((storedTime & 0x00ff) % 10);
+    result = convertGpsDataToTimeNumber(hour_msn, hour_lsn, min_msn, min_lsn);
+    return result;
 }
 
-void makeTimeTwelveHour(timeNumber_t *time_num)
+void getDate(char gpsData[], char result[])
 {
-    int hour = (int)((((time_num->time & 0xf000) >> 12) * 10) + ((time_num->time & 0x0f00) >> 8));
-    if(hour > 11)
-        hour = hour - 12;
-    if(hour < 12)
-        time_num->am_pm = 0;
-    else
-        time_num->am_pm = 1;
-    time_num->time = (unsigned int)((((unsigned char)((hour/10) << 4) | (hour % 10)) & 0x00ff) << 8) | (time_num->time & 0x00ff);
+    unsigned char count = 0;
+    for (int i = 0; i < 100; i++ )
+    {
+        if(gpsData[i] == ',')
+            count++;
+        if(count == 8)
+        {
+            if(gpsData[i + 4] == '0')
+                result[0] = ' ';
+            else
+            result[0] = gpsData[i + 4];
+            result[1] = gpsData[i + 5];
+            result[2] = gpsData[i + 2];
+            result[3] = gpsData[i + 3];
+            result[4] = gpsData[i + 6];
+            result[5] = gpsData[i + 7];
+        }
+    }
 }
 
 void __interrupt(high_priority) tcInt(void)
 {
-    if(PIR1bits.TMR1IF == 1)
+    if(PIR1bits.TMR1IF == 1 && PIE1bits.TMR1IE == 1)
     {
         PIE1bits.TMR1IE = 0;
         state1 = (state1 <<1) | PORTAbits.RA1 | 0x0000;
@@ -540,11 +594,35 @@ void __interrupt(high_priority) tcInt(void)
         state5 = (state5 <<1) | PORTCbits.RC2 | 0x0000;
         if(state1 == 0xf000)
         {
-            MenuButton = 1;
+            if(controlState == RUN)
+            {
+                controlState = START_TIME;
+            }
+            else if(controlState == START_TIME)
+            {
+                controlState = RUN;
+            }
+            lcdIsWritten = 0;
         }
         if(state2 == 0xf000)
         {
-            NextButton = 1;
+            if(controlState == START_TIME)
+            {
+            controlState = END_TIME;                
+            }
+            else if (controlState == END_TIME)
+            {
+                controlState = OFFSET_TIME;
+            }
+            else if(controlState == OFFSET_TIME)
+            {
+                controlState = TWELVE_TWENTYFOUR;
+            }
+            else if(controlState == TWELVE_TWENTYFOUR)
+            {
+                controlState = RUN;
+            }
+            lcdIsWritten = 0;
         }
         if(state3 == 0xf000)
         {
@@ -562,15 +640,16 @@ void __interrupt(high_priority) tcInt(void)
         {
             PmpButton = 0;
         }
+        LATAbits.LA6 = !LATAbits.LA6;
         TMR1H = 0xff;
-        TMR1L = 0x80;
+        TMR1L = 0xd0;
+        
         
         PIE1bits.TMR1IE = 1;
         PIR1bits.TMR1IF = 0;
     }
-    if(PIR1bits.RCIF == 1)
+    if(PIR1bits.RCIF == 1 && PIE1bits.RCIE == 1)
     {
-        
         PIE1bits.RCIE = 0;
 
         if(RCSTAbits.FERR)
@@ -618,14 +697,9 @@ void __interrupt(high_priority) tcInt(void)
             rx_string[rxIndex] = '\0';
             rxState = COMPLETE;
         }
-        else
-        {
-
-        }
         PIR1bits.RCIF = 0;
         PIE1bits.RCIE = 1;
-    }
-    
+    } 
 }
 
 
