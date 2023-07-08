@@ -6,7 +6,7 @@
 #define _XTAL_FREQ 8000000
 //#define __delay_ms(x) _delay((unsigned long)((x)*(_XTAL_FREQ/4000.0)))
 // set up the timing for the LCD delays
-#define LCD_delay 750 // ~5mS
+#define LCD_delay 750 // ~750us
 #define LCD_Startup 15 // ~15mS
 
 // Command set for Hitachi 44780U LCD display controller
@@ -75,7 +75,7 @@ void LCDPutChar(char ch)
 {
     __delay_us(LCD_delay);
     LCDWriteNibble(ch,data);    //Send higher nibble first
-    ch = (ch << 4);             //get the lower nibble
+    ch = (char)(ch << 4);             //get the lower nibble
     LCDWriteNibble(ch,data);    // Now send the low nibble
 }
 
@@ -84,7 +84,7 @@ void LCDPutCmd(char ch)
 {
     __delay_us(LCD_delay);
     LCDWriteNibble(ch,instr);   //Send the higher nibble
-    ch = (ch << 4);             //get the lower nibble
+    ch = (char)(ch << 4);             //get the lower nibble
     __delay_us(LCD_delay);
     LCDWriteNibble(ch,instr);  //Now send the lower nibble
 }
