@@ -77,16 +77,21 @@
  */
 #define _XTAL_FREQ 8000000
 
-#define Relay1           LATBbits.LB0
-#define Relay2           LATBbits.LB1
-#define Relay3           LATBbits.LB2
-#define Relay4           LATBbits.LB3
-#define Relay5           LATBbits.LB4
-#define Relay6           LATBbits.LB5
-#define StartTimeAddress  0x1001
-#define EndTimeAddress  0x1003
-#define TimeOffsettAddress  0x1005
-#define IsTwelveHourClock   0x1006
+#define Menu            PORTAbits.RA1
+#define Next            PORTAbits.RA2
+#define Inc             PORTAbits.RA3
+#define Dec             PORTAbits.RA4
+#define Pump            PORTCbits.RC2
+#define Relay1          LATBbits.LB0
+#define Relay2          LATBbits.LB1
+#define Relay3          LATBbits.LB2
+#define Relay4          LATBbits.LB3
+#define Relay5          LATBbits.LB4
+#define Relay6          LATBbits.LB5
+#define StartTimeAddress        0x1001
+#define EndTimeAddress          0x1003
+#define TimeOffsettAddress      0x1005
+#define IsTwelveHourAddress     0x1006
 
 
 
@@ -114,12 +119,14 @@ uint8_t rx_flag = 0;
 char data = 0x00;
 uint8_t count = 0;
 uint8_t rxIndex = 0;
-int time_offset = -4;
-int twelve_hour = 0;
+int time_offset;
+int temp_time_offset;
+int twelve_hour;
+int temp_twelve_hour;
+char offset_data[4];
+char twelve_hour_data[4];
 unsigned int current_time = 0x0000;
-timeNumber_t current_adjusted_time;
-timeNumber_t start_adjusted_time;
-timeNumber_t end_adjusted_time;
+timeNumber_t displayed_current_time;
 unsigned int start_time;
 unsigned int temp_start_time;
 unsigned int end_time;
@@ -140,6 +147,7 @@ int main(void) {
     
     OSCCON = 0x72; // Select internal oscillator with frequency = 8MHz
     ADCON1 = 0x0e;
+    // Port I/O direction
     TRISAbits.RA0 = 1;
     TRISAbits.RA1 = 1;
     TRISAbits.RA2 = 1;
@@ -175,6 +183,7 @@ int main(void) {
     TRISEbits.RE0 = 0;
     TRISEbits.RE1 = 0;
     TRISEbits.RE2 = 0;
+    // End Port I/O direction
     
     INTCON  =   0xc0;
     INTCON2 =   0x00;
@@ -188,32 +197,38 @@ int main(void) {
     InitUart();
     InitNvm();
     LCD_Initialize();
-    // WriteNvm(StartTimeAddress, 0x0c, 0x1e);
-    // WriteNvm(EndTimeAddress, 0x16, 0x1e);
+    // WriteNvm(StartTimeAddress, 0x0c, 0x1e);      // Write 12:30pm to NVM (remember the time offset will screw with this value!)
+    // WriteNvm(EndTimeAddress, 0x16, 0x1e);        // Write 10:30pm to NVM (remember the time offset will screw with this value!)
+    // WriteNvm(TimeOffsettAddress, 0xff, 0xfc);    // Write -4 to NVM
+    // WriteNvm(EndTimeAddress, 0x00, 0x01);        // Write 1 to NVM (acts as a bool))
     start_time = ReadSpi(StartTimeAddress);
     temp_start_time = ReadSpi(StartTimeAddress);
     end_time = ReadSpi(EndTimeAddress);
     temp_end_time = ReadSpi(EndTimeAddress);
-    twelve_hour = 1;
-    current_adjusted_time.am_pm = 0;
-    current_adjusted_time.time = 0;
+    time_offset = (int)ReadSpi(TimeOffsettAddress);
+    temp_time_offset = (int)ReadSpi(TimeOffsettAddress);
+    twelve_hour = (int)ReadSpi(IsTwelveHourAddress);
+    temp_twelve_hour = (int)ReadSpi(IsTwelveHourAddress);
+    
     Relay1 = 0;
     mode = 1;
-    
+    DisplayClr();
+    __delay_ms(100);
+    LCDLine1();
     LCDPutStr("Pool Pump Timer"); 
     LCDLine2(); 
-    LCDPutStr("Using GPS antenna"); 
-    __delay_ms(500);
+    LCDPutStr("  Using GPS     "); 
+    __delay_ms(1000);
 
     while(1){
-        if(IncButton && controlState != RUN)
+        if(IncButton && (controlState == START_TIME | controlState == END_TIME)) 
         {
             temp_min = temp_min + 10;
             if(temp_min >= 60)
             {
                 temp_hour++;
-                if(temp_hour > 24)
-                    temp_hour = 24;
+                if(temp_hour > 36)
+                    temp_hour = 36;
                 temp_min = 0;
             }
             if(controlState == START_TIME)
@@ -227,14 +242,14 @@ int main(void) {
             lcdIsWritten = 0;
             IncButton = 0;
         }
-        else if(DecButton && controlState != RUN)
+        else if(DecButton && (controlState == START_TIME | controlState == END_TIME))
         {
             temp_min = temp_min - 10;
-            if(temp_min <= 0)
+            if(temp_min < 0)
             {
                 temp_hour--;
-                if(temp_hour < 0)
-                    temp_hour = 0;
+                if(temp_hour < -12)
+                    temp_hour = -12;
                 temp_min = 50;
             }
             if(controlState == START_TIME)
@@ -253,12 +268,39 @@ int main(void) {
             mode = !mode;
              DecButton = 0;
         }
+        else if(IncButton && controlState == OFFSET_TIME)
+        {
+            time_offset++;
+            if(time_offset > 12)
+                time_offset = 12;
+            lcdIsWritten = 0;
+            IncButton = 0;
+        }
+        else if(DecButton && controlState == OFFSET_TIME)
+        {
+            time_offset--;
+            if(time_offset < -12)
+                time_offset = -12;
+            lcdIsWritten = 0;
+            DecButton = 0;
+        }
+        else if(IncButton && controlState == TWELVE_TWENTYFOUR)
+        {
+            twelve_hour = !twelve_hour;
+            lcdIsWritten = 0;
+            IncButton = 0;
+        }
+        else if(DecButton && controlState == TWELVE_TWENTYFOUR)
+        {
+            twelve_hour = !twelve_hour;
+            lcdIsWritten = 0;
+            DecButton = 0;
+        }
         switch(controlState)
         {
             case RUN:
             {
                 PIE1bits.RCIE = 1;
-                timeNumber_t displayed_current_time;
                 if(rxState == COMPLETE)
                 {
                     char result[16];
@@ -309,6 +351,30 @@ int main(void) {
                     if(count <= 20)
                         count++;
                 }
+                if(start_time != temp_start_time)
+                {
+                    unsigned char msb = (unsigned char)((start_time & 0xff00) >> 8);
+                    unsigned char lsb = (unsigned char)(start_time & 0x00ff);
+                    WriteNvm(StartTimeAddress, msb, lsb);
+                }
+                if(end_time != temp_end_time)
+                {
+                    unsigned char msb = (unsigned char)((end_time & 0xff00) >> 8);
+                    unsigned char lsb = (unsigned char)(end_time & 0x00ff);
+                    WriteNvm(EndTimeAddress, msb, lsb);
+                }
+                if(time_offset != temp_time_offset)
+                {
+                    unsigned char msb = (unsigned char)(((unsigned int)time_offset & 0xff00) >> 8);
+                    unsigned char lsb = (unsigned char)(time_offset & 0x00ff);
+                    WriteNvm(TimeOffsettAddress, msb, lsb);
+                }
+                if(twelve_hour != temp_twelve_hour)
+                {
+                    unsigned char msb = (unsigned char)(((unsigned int)twelve_hour & 0xff00) >> 8);
+                    unsigned char lsb = (unsigned char)(twelve_hour & 0x00ff);
+                    WriteNvm(IsTwelveHourAddress, msb, lsb);
+                }                        
                 break;
             };
             case START_TIME:
@@ -366,7 +432,6 @@ int main(void) {
                 PIE1bits.RCIE = 0;
                 if(!lcdIsWritten)
                 {
-
                     displayed_end_time = convertStoredTimeToTimeNumber(end_time);
                     temp_hour = displayed_end_time.hour;
                     temp_min = displayed_end_time.mins;
@@ -413,6 +478,21 @@ int main(void) {
             }
             case OFFSET_TIME:
             {
+                int temp;
+                if(time_offset < 0)
+                {
+                    temp = time_offset * -1;
+                    offset_data[0] = '-';
+                    offset_data[1] = (char)(((temp & 0x00f0) >> 4) | 0x30);
+                    offset_data[2] = (char)((temp & 0x000f) | 0x30);
+                }
+                else
+                {
+                offset_data[0] = '+';
+                offset_data[1] = (char)(((time_offset & 0x00f0) >> 4) | 0x30);
+                offset_data[2] = (char)((time_offset & 0x000f) | 0x30);                   
+                }
+
                 if(!lcdIsWritten)
                 {
                     PIE1bits.RCIE = 0;
@@ -436,9 +516,9 @@ int main(void) {
                     lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
-                    lcdLine2[0] = '-';
-                    lcdLine2[1] = '0';
-                    lcdLine2[2] = '4';
+                    lcdLine2[0] = offset_data[0];
+                    lcdLine2[1] = offset_data[1];
+                    lcdLine2[2] = offset_data[2];
                     lcdLine2[3] = ' ';
                     lcdLine2[4] = 'H';
                     lcdLine2[5] = 'o';
@@ -459,6 +539,19 @@ int main(void) {
             }
             case TWELVE_TWENTYFOUR:
             {
+                if(twelve_hour)
+                {
+                    twelve_hour_data[0] = 'Y';
+                    twelve_hour_data[1] = 'e';
+                    twelve_hour_data[2] = 's';
+                }
+                else
+                {
+                    twelve_hour_data[0] = 'N';
+                    twelve_hour_data[1] = 'o';
+                    twelve_hour_data[2] = ' '; 
+                }
+                twelve_hour_data[3] = '\0';
                 if(!lcdIsWritten)
                 {
                     PIE1bits.RCIE = 0;
@@ -482,9 +575,9 @@ int main(void) {
                     lcdLine1[16] = '\0';
                     LCDPutStr(lcdLine1); 
                     LCDLine2();
-                    lcdLine2[0] = ' ';
-                    lcdLine2[1] = ' ';
-                    lcdLine2[2] = ' ';
+                    lcdLine2[0] = twelve_hour_data[0];
+                    lcdLine2[1] = twelve_hour_data[1];
+                    lcdLine2[2] = twelve_hour_data[2];
                     lcdLine2[3] = ' ';
                     lcdLine2[4] = ' ';
                     lcdLine2[5] = ' ';
@@ -504,18 +597,6 @@ int main(void) {
                 }
             }
         }
-        if(start_time != temp_start_time)
-        {
-            unsigned char a = (unsigned char)((start_time & 0xff00) >> 8);
-            unsigned char b = (unsigned char)(start_time & 0x00ff);
-            WriteNvm(StartTimeAddress, a, b);
-        }
-        if(end_time != temp_end_time)
-        {
-            unsigned char a = (unsigned char)((end_time & 0xff00) >> 8);
-            unsigned char b = (unsigned char)(end_time & 0x00ff);
-            WriteNvm(EndTimeAddress, a, b);
-        }
         if(!mode)
         {
             man_auto[0] = 'm';
@@ -530,7 +611,8 @@ int main(void) {
             man_auto[2] = 'n';
             man_auto[3] = '\0';
             if(count > 20)
-            {
+            {   
+                timeNumber_t foo = convertStoredTimeToTimeNumber(current_time);
                 if(start_time < current_time && current_time < end_time)
                 {
                     Relay1 = 1;
@@ -552,7 +634,6 @@ void InitT1(void)
     PIR1bits.TMR1IF = 0;
 }
 
-
 timeNumber_t convertGpsDataToTimeNumber(unsigned char hour_msb, unsigned char hour_lsb, unsigned char min_msb, unsigned char min_lsb)
 {
     timeNumber_t result;
@@ -560,6 +641,14 @@ timeNumber_t convertGpsDataToTimeNumber(unsigned char hour_msb, unsigned char ho
     result.mins = (int)((min_msb & 0x0f) * 10) + (min_lsb & 0x0f);
     result.time = (unsigned int)((result.hour << 8) | result.mins);
     result.adjustedHour = result.hour + time_offset;
+    if(result.adjustedHour < 0)
+    {
+        result.adjustedHour = result.adjustedHour + 24;
+    }
+    else if(result.adjustedHour > 24)
+    {
+        result.adjustedHour = result.adjustedHour - 24;
+    }
     if (result.adjustedHour > 11)
     {
         result.am_pm = 1;
@@ -576,8 +665,21 @@ timeNumber_t convertGpsDataToTimeNumber(unsigned char hour_msb, unsigned char ho
         result.adjustedTwelveHour = result.adjustedHour;
     if(twelve_hour)
     {
-        result.hour_msb = (unsigned char)(((result.adjustedTwelveHour / 10) & 0x000f) | 0x30);
-        result.hour_lsb = (unsigned char)(((result.adjustedTwelveHour % 10) & 0x000f) | 0x30);       
+        if(result.adjustedTwelveHour == 0)
+        {
+            result.hour_msb = 0x31;
+            result.hour_lsb = 0x32;
+        }
+        else if(result.adjustedTwelveHour == 12)
+        {
+            result.hour_msb = 0x30;
+            result.hour_lsb = 0x30;
+        }        
+        else
+        {
+            result.hour_msb = (unsigned char)(((result.adjustedTwelveHour / 10) & 0x000f) | 0x30);
+            result.hour_lsb = (unsigned char)(((result.adjustedTwelveHour % 10) & 0x000f) | 0x30);             
+        }
     }
     else
     {
@@ -624,17 +726,18 @@ void getDate(char gpsData[], char result[])
         }
     }
 }
-
+// Interrupt Service Routine (services both Timer-1 and Uart)
 void __interrupt(high_priority) tcInt(void)
 {
     if(PIR1bits.TMR1IF == 1 && PIE1bits.TMR1IE == 1)
     {
         PIE1bits.TMR1IE = 0;
-        state1 = (state1 <<1) | PORTAbits.RA1 | 0x0000;
-        state2 = (state2 <<1) | PORTAbits.RA2 | 0x0000;
-        state3 = (state3 <<1) | PORTAbits.RA3 | 0x0000;
-        state4 = (state4 <<1) | PORTAbits.RA4 | 0x0000;
-        state5 = (state5 <<1) | PORTCbits.RC2 | 0x0000;
+        // button debouncing
+        state1 = (state1 <<1) | Menu    | 0x0000;
+        state2 = (state2 <<1) | Next    | 0x0000;
+        state3 = (state3 <<1) | Inc     | 0x0000;
+        state4 = (state4 <<1) | Dec     | 0x0000;
+        state5 = (state5 <<1) | Pump    | 0x0000;
         if(state1 == 0xf000)
         {
             if(controlState == RUN)
@@ -680,9 +783,9 @@ void __interrupt(high_priority) tcInt(void)
             Relay1 = !Relay1;
         }
 
-        LATAbits.LA6 = !LATAbits.LA6;
+        LATAbits.LA6 = !LATAbits.LA6;   // Test for timer-1 period on pin 14 (R21) if the Configuration bit is set to config OSC = INTIO67
         TMR1H = 0xff;
-        TMR1L = 0xd0;
+        TMR1L = 0x80;                   // affects switch debouncing.
         
         
         PIE1bits.TMR1IE = 1;
@@ -741,6 +844,6 @@ void __interrupt(high_priority) tcInt(void)
         PIE1bits.RCIE = 1;
     } 
 }
-
-
-
+/**
+End of File
+*/
