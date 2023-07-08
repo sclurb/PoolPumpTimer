@@ -31,7 +31,6 @@ void InitUart(void)
 }
 
 
-    
-
-
-
+/**
+End of File
+*/
