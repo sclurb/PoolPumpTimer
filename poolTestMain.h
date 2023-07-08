@@ -79,3 +79,6 @@ extern "C" {
 
 #endif	/* POOLTESTMAIN_TEMPLATE_H */
 
+/**
+End of File
+*/
