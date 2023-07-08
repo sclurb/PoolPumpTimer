@@ -12,7 +12,7 @@
 
 #include <xc.h> // include processor files - each processor file is guarded.  
 
-#define LCD_delay 5 // ~5mS
+#define LCD_delay 750 // ~750us
 #define LCD_Startup 15 // ~15mS
 
 // Command set for Hitachi 44780U LCD display controller
@@ -44,7 +44,7 @@ void LCDPutChar(char ch);
 void LCDPutCmd(char ch);
 void LCDPutStr(const char *); 
 void LCDWriteNibble(char ch, char rs);
-void LCDGoto(char pos, char ln);
+//void LCDGoto(char pos, char ln);
 
 
 #endif	/* XC_HEADER_TEMPLATE_H */
