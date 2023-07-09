@@ -307,6 +307,8 @@ int main(void) {
                     getDate(rx_string, result);
                     displayed_current_time = convertGpsDataToTimeNumber(rx_string[1], rx_string[2], rx_string[3], rx_string[4]);
                     current_time = displayed_current_time.time;
+                    if(displayed_current_time.hour_msb == '0')
+                        displayed_current_time.hour_msb = ' ';
 
                     LCDLine1();
                     lcdLine1[0] = man_auto[0];
@@ -356,25 +358,54 @@ int main(void) {
                     unsigned char msb = (unsigned char)((start_time & 0xff00) >> 8);
                     unsigned char lsb = (unsigned char)(start_time & 0x00ff);
                     WriteNvm(StartTimeAddress, msb, lsb);
+                    temp_start_time = ReadSpi(StartTimeAddress);
                 }
                 if(end_time != temp_end_time)
                 {
                     unsigned char msb = (unsigned char)((end_time & 0xff00) >> 8);
                     unsigned char lsb = (unsigned char)(end_time & 0x00ff);
                     WriteNvm(EndTimeAddress, msb, lsb);
+                    temp_end_time= ReadSpi(EndTimeAddress);
                 }
                 if(time_offset != temp_time_offset)
                 {
                     unsigned char msb = (unsigned char)(((unsigned int)time_offset & 0xff00) >> 8);
                     unsigned char lsb = (unsigned char)(time_offset & 0x00ff);
                     WriteNvm(TimeOffsettAddress, msb, lsb);
+                    temp_time_offset = ReadSpi(TimeOffsettAddress);
                 }
                 if(twelve_hour != temp_twelve_hour)
                 {
                     unsigned char msb = (unsigned char)(((unsigned int)twelve_hour & 0xff00) >> 8);
                     unsigned char lsb = (unsigned char)(twelve_hour & 0x00ff);
                     WriteNvm(IsTwelveHourAddress, msb, lsb);
-                }                        
+                    temp_twelve_hour =  ReadSpi(IsTwelveHourAddress);
+                }
+                if(!mode)
+                {
+                    man_auto[0] = 'm';
+                    man_auto[1] = 'a';
+                    man_auto[2] = 'n';
+                    man_auto[3] = '\0';
+                }
+                else
+                {
+                    man_auto[0] = 'R';
+                    man_auto[1] = 'u';
+                    man_auto[2] = 'n';
+                    man_auto[3] = '\0';
+                    if(count > 20)
+                    {   
+                        if(start_time < current_time && current_time < end_time)
+                        {
+                            Relay1 = 1;
+                        }
+                        else
+                        {
+                            Relay1 = 0;
+                        }
+                    }
+                }                
                 break;
             };
             case START_TIME:
@@ -594,32 +625,6 @@ int main(void) {
                     lcdLine2[16] = '\0';
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
-                }
-            }
-        }
-        if(!mode)
-        {
-            man_auto[0] = 'm';
-            man_auto[1] = 'a';
-            man_auto[2] = 'n';
-            man_auto[3] = '\0';
-        }
-        else
-        {
-            man_auto[0] = 'R';
-            man_auto[1] = 'u';
-            man_auto[2] = 'n';
-            man_auto[3] = '\0';
-            if(count > 20)
-            {   
-                timeNumber_t foo = convertStoredTimeToTimeNumber(current_time);
-                if(start_time < current_time && current_time < end_time)
-                {
-                    Relay1 = 1;
-                }
-                else
-                {
-                    Relay1 = 0;
                 }
             }
         }
