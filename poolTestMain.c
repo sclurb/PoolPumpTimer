@@ -200,7 +200,7 @@ int main(void) {
     // WriteNvm(StartTimeAddress, 0x0c, 0x1e);      // Write 12:30pm to NVM (remember the time offset will screw with this value!)
     // WriteNvm(EndTimeAddress, 0x16, 0x1e);        // Write 10:30pm to NVM (remember the time offset will screw with this value!)
     // WriteNvm(TimeOffsettAddress, 0xff, 0xfc);    // Write -4 to NVM
-    // WriteNvm(EndTimeAddress, 0x00, 0x01);        // Write 1 to NVM (acts as a bool))
+    // WriteNvm(IsTwelveHourAddress, 0x00, 0x01);   // Write 1 to NVM (acts as a bool))
     start_time = ReadSpi(StartTimeAddress);
     temp_start_time = ReadSpi(StartTimeAddress);
     end_time = ReadSpi(EndTimeAddress);
@@ -209,7 +209,8 @@ int main(void) {
     temp_time_offset = (int)ReadSpi(TimeOffsettAddress);
     twelve_hour = (int)ReadSpi(IsTwelveHourAddress);
     temp_twelve_hour = (int)ReadSpi(IsTwelveHourAddress);
-    
+    displayed_start_time = convertStoredTimeToTimeNumber(start_time);
+    displayed_end_time = convertStoredTimeToTimeNumber(end_time);
     Relay1 = 0;
     mode = 1;
     DisplayClr();
@@ -372,14 +373,14 @@ int main(void) {
                     unsigned char msb = (unsigned char)(((unsigned int)time_offset & 0xff00) >> 8);
                     unsigned char lsb = (unsigned char)(time_offset & 0x00ff);
                     WriteNvm(TimeOffsettAddress, msb, lsb);
-                    temp_time_offset = ReadSpi(TimeOffsettAddress);
+                    temp_time_offset = (int)ReadSpi(TimeOffsettAddress);
                 }
                 if(twelve_hour != temp_twelve_hour)
                 {
                     unsigned char msb = (unsigned char)(((unsigned int)twelve_hour & 0xff00) >> 8);
                     unsigned char lsb = (unsigned char)(twelve_hour & 0x00ff);
                     WriteNvm(IsTwelveHourAddress, msb, lsb);
-                    temp_twelve_hour =  ReadSpi(IsTwelveHourAddress);
+                    temp_twelve_hour =  (int)ReadSpi(IsTwelveHourAddress);
                 }
                 if(!mode)
                 {
@@ -396,7 +397,7 @@ int main(void) {
                     man_auto[3] = '\0';
                     if(count > 20)
                     {   
-                        if(start_time < current_time && current_time < end_time)
+                        if(displayed_start_time.comparableTime < displayed_current_time.comparableTime && displayed_current_time.comparableTime < displayed_end_time.comparableTime)
                         {
                             Relay1 = 1;
                         }
@@ -407,7 +408,7 @@ int main(void) {
                     }
                 }                
                 break;
-            };
+            }
             case START_TIME:
             {
                 PIE1bits.RCIE = 0;
@@ -506,6 +507,7 @@ int main(void) {
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1; 
                 }
+                break;
             }
             case OFFSET_TIME:
             {
@@ -514,14 +516,14 @@ int main(void) {
                 {
                     temp = time_offset * -1;
                     offset_data[0] = '-';
-                    offset_data[1] = (char)(((temp & 0x00f0) >> 4) | 0x30);
-                    offset_data[2] = (char)((temp & 0x000f) | 0x30);
+                    offset_data[1] = (char)(((temp & 0x00ff) / 10) | 0x30);
+                    offset_data[2] = (char)(((temp & 0x00ff) % 10) | 0x30);
                 }
                 else
                 {
-                offset_data[0] = '+';
-                offset_data[1] = (char)(((time_offset & 0x00f0) >> 4) | 0x30);
-                offset_data[2] = (char)((time_offset & 0x000f) | 0x30);                   
+                    offset_data[0] = '+';
+                    offset_data[1] = (char)(((time_offset & 0x00ff) / 10) | 0x30);
+                    offset_data[2] = (char)(((time_offset & 0x00ff) % 10) | 0x30);                   
                 }
 
                 if(!lcdIsWritten)
@@ -567,6 +569,7 @@ int main(void) {
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
                 }
+                break;
             }
             case TWELVE_TWENTYFOUR:
             {
@@ -626,6 +629,7 @@ int main(void) {
                     LCDPutStr(lcdLine2);  
                     lcdIsWritten = 1;
                 }
+                break;
             }
         }
     }    
@@ -646,14 +650,21 @@ timeNumber_t convertGpsDataToTimeNumber(unsigned char hour_msb, unsigned char ho
     result.mins = (int)((min_msb & 0x0f) * 10) + (min_lsb & 0x0f);
     result.time = (unsigned int)((result.hour << 8) | result.mins);
     result.adjustedHour = result.hour + time_offset;
-    if(result.adjustedHour < 0)
+    if (result.adjustedHour < 0)
     {
         result.adjustedHour = result.adjustedHour + 24;
+        result.comparableHour = result.hour + 24;
     }
-    else if(result.adjustedHour > 24)
+    else if (result.adjustedHour > 24)
     {
         result.adjustedHour = result.adjustedHour - 24;
+        result.comparableHour = result.hour - 24;
     }
+    else
+    {
+        result.comparableHour = result.hour;
+    }
+    result.comparableTime = (unsigned int)((result.comparableHour << 8) | result.mins);
     if (result.adjustedHour > 11)
     {
         result.am_pm = 1;
@@ -664,37 +675,37 @@ timeNumber_t convertGpsDataToTimeNumber(unsigned char hour_msb, unsigned char ho
         result.am_pm = 0;
         result.a_or_p = 'a';
     }
-    if(result.am_pm)
+    if (result.am_pm)
         result.adjustedTwelveHour = result.adjustedHour - 12;
     else
         result.adjustedTwelveHour = result.adjustedHour;
-    if(twelve_hour)
+    if (twelve_hour)
     {
-        if(result.adjustedTwelveHour == 0)
+        if (result.adjustedTwelveHour == 0)
         {
             result.hour_msb = 0x31;
             result.hour_lsb = 0x32;
         }
-        else if(result.adjustedTwelveHour == 12)
+        else if (result.adjustedTwelveHour == 12)
         {
             result.hour_msb = 0x30;
             result.hour_lsb = 0x30;
-        }        
+        }
         else
         {
             result.hour_msb = (unsigned char)(((result.adjustedTwelveHour / 10) & 0x000f) | 0x30);
-            result.hour_lsb = (unsigned char)(((result.adjustedTwelveHour % 10) & 0x000f) | 0x30);             
+            result.hour_lsb = (unsigned char)(((result.adjustedTwelveHour % 10) & 0x000f) | 0x30);
         }
     }
     else
     {
         result.hour_msb = (unsigned char)(((result.adjustedHour / 10) & 0x000f) | 0x30);
-        result.hour_lsb = (unsigned char)(((result.adjustedHour % 10) & 0x000f) | 0x30);        
+        result.hour_lsb = (unsigned char)(((result.adjustedHour % 10) & 0x000f) | 0x30);
     }
     result.min_msb = (unsigned char)(((result.mins / 10) & 0x000f) | 0x30);
     result.min_lsb = (unsigned char)(((result.mins % 10) & 0x000f) | 0x30);
     result.mmm = 'm';
-    
+
     return result;
 }
 
@@ -759,21 +770,25 @@ void __interrupt(high_priority) tcInt(void)
         {
             if(controlState == START_TIME)
             {
-            controlState = END_TIME;                
+            controlState = END_TIME; 
+            lcdIsWritten = 0;
             }
             else if (controlState == END_TIME)
             {
                 controlState = OFFSET_TIME;
+                lcdIsWritten = 0;
             }
             else if(controlState == OFFSET_TIME)
             {
                 controlState = TWELVE_TWENTYFOUR;
+                lcdIsWritten = 0;
             }
             else if(controlState == TWELVE_TWENTYFOUR)
             {
                 controlState = RUN;
+                lcdIsWritten = 0;
             }
-            lcdIsWritten = 0;
+            
         }
         if(state3 == 0xf000)
         {
