@@ -46,6 +46,8 @@ typedef struct time_t
 typedef struct timeNumber_t
 {
     unsigned int time;
+    unsigned int comparableTime;
+    int comparableHour;
     int hour;
     int mins;
     int adjustedHour;
